@@ -6,6 +6,12 @@ import random
 
 from robin_stocks.robinhood.helper import *
 from robin_stocks.robinhood.urls import *
+from django.apps import apps
+from datetime import datetime, timedelta
+from django.utils.timezone import now
+from django.core.cache import cache
+import json
+
 
 def generate_device_token():
     """This function will generate a token used when loggin on.
@@ -33,7 +39,7 @@ def generate_device_token():
     return(id)
 
 
-def respond_to_challenge(challenge_id, sms_code):
+def respond_to_challenge(challenge_id, sms_code, session):
     """This function will post to the challenge url.
 
     :param challenge_id: The challenge id.
@@ -47,10 +53,74 @@ def respond_to_challenge(challenge_id, sms_code):
     payload = {
         'response': sms_code
     }
-    return(request_post(url, payload))
+    return(request_post(url, session, payload=payload))
 
+def refresh(session, uid, expiresIn=86400, scope='internal'):
+    url = login_url()
 
-def login(username=None, password=None, expiresIn=86400, scope='internal', by_sms=True, store_session=True, mfa_code=None, pickle_path="", pickle_name=""):
+    UserRobinhoodInfo = apps.get_model("robin_stocks", "UserRobinhoodInfo")
+    try:
+        brokerageInfo = UserRobinhoodInfo.objects.get(user__id=uid)
+    except Exception as e:
+        raise Exception(f"This user's brokerage info does not exist: {e}")
+    device_token = brokerageInfo.device_token
+    refresh_token = brokerageInfo.refresh_token
+
+    payload = {
+        'client_id': 'c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS',
+        'grant_type': 'refresh_token',
+        'device_token': device_token,
+        'refresh_token': refresh_token
+    }
+    try:
+        data = request_post(url, session, payload=payload, jsonify_data=False)
+        if data.status_code not in [200, 201, 202, 204]:
+            Exception(f"could not make refresh request: {e}")
+        data = data.json()
+    except Exception as e:
+        raise Exception(f"could not make refresh request: {e}")
+    
+    save_cred(data, payload, uid, session)
+    
+    return data
+
+def save_cred(data, payload, uid, session):
+    if 'access_token' in data:
+        token = '{0} {1}'.format(data['token_type'], data['access_token'])
+        update_session('Authorization', token, session)
+        #set_login_state(uid, True)
+        data['detail'] = "logged in with brand new authentication code."
+
+        UserRobinhoodInfo = apps.get_model("robin_stocks", "UserRobinhoodInfo")
+        try:
+            brokerageInfo = UserRobinhoodInfo.objects.get(user__id=uid)
+        except Exception as e:
+            User = apps.get_model("auth", "User")
+            user = User.objects.get(id=uid)
+            brokerageInfo = UserRobinhoodInfo(
+                user = user,
+                token_type = data['token_type'],
+                access_token = data['access_token'],
+                refresh_token = data['refresh_token'],
+                device_token = payload['device_token'],
+                expiration_time = now() + timedelta(seconds=data['expires_in'])
+            )
+            brokerageInfo.save()
+            return
+        
+        brokerageInfo.token_type = data['token_type']
+        brokerageInfo.access_token = data['access_token']
+        brokerageInfo.refresh_token = data['refresh_token']
+        brokerageInfo.device_token = payload['device_token']
+        brokerageInfo.expiration_time = now() + timedelta(seconds=data['expires_in'])
+        brokerageInfo.save()
+    else:
+        if 'detail' in data:
+            raise Exception(f"{uid}: {data['detail']}")
+        raise Exception(f"{uid}: Received an error response for {data}")
+
+def login(session=None, uid=None, username=None, password=None, expiresIn=86400, 
+          scope='internal', by_sms=True, mfa_code=None, challenge_code=None):
     """This function will effectively log the user into robinhood by getting an
     authentication token and saving it to the session header. By default, it
     will store the authentication token in a pickle file and load that value
@@ -81,25 +151,15 @@ def login(username=None, password=None, expiresIn=86400, scope='internal', by_sm
     contains information on whether the access token was generated or loaded from pickle file.
 
     """
+
     device_token = generate_device_token()
-    home_dir = os.path.expanduser("~")
-    data_dir = os.path.join(home_dir, ".tokens")
-    if pickle_path:
-        if not os.path.isabs(pickle_path):
-            # normalize relative paths
-            pickle_path = os.path.normpath(os.path.join(os.getcwd(), pickle_path))
-        data_dir = pickle_path
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-    creds_file = "robinhood" + pickle_name + ".pickle"
-    pickle_path = os.path.join(data_dir, creds_file)
+    
     # Challenge type is used if not logging in with two-factor authentication.
     if by_sms:
         challenge_type = "sms"
     else:
         challenge_type = "email"
 
-    url = login_url()
     payload = {
         'client_id': 'c82SH0WZOsabOXGP2sxqcj34FxkvfnWRZBKlBjFS',
         'expires_in': expiresIn,
@@ -118,132 +178,179 @@ def login(username=None, password=None, expiresIn=86400, scope='internal', by_sm
     if mfa_code:
         payload['mfa_code'] = mfa_code
 
-    # If authentication has been stored in pickle file then load it. Stops login server from being pinged so much.
-    if os.path.isfile(pickle_path):
-        # If store_session has been set to false then delete the pickle file, otherwise try to load it.
-        # Loading pickle file will fail if the acess_token has expired.
-        if store_session:
-            try:
-                with open(pickle_path, 'rb') as f:
-                    pickle_data = pickle.load(f)
-                    access_token = pickle_data['access_token']
-                    token_type = pickle_data['token_type']
-                    refresh_token = pickle_data['refresh_token']
-                    # Set device_token to be the original device token when first logged in.
-                    pickle_device_token = pickle_data['device_token']
-                    payload['device_token'] = pickle_device_token
-                    # Set login status to True in order to try and get account info.
-                    set_login_state(True)
-                    update_session(
-                        'Authorization', '{0} {1}'.format(token_type, access_token))
-                    # Try to load account profile to check that authorization token is still valid.
-                    res = request_get(
-                        positions_url(), 'pagination', {'nonzero': 'true'}, jsonify_data=False)
-                    # Raises exception is response code is not 200.
-                    res.raise_for_status()
-                    return({'access_token': access_token, 'token_type': token_type,
-                            'expires_in': expiresIn, 'scope': scope, 'detail': 'logged in using authentication in {0}'.format(creds_file),
-                            'backup_code': None, 'refresh_token': refresh_token})
-            except:
-                print(
-                    "ERROR: There was an issue loading pickle file. Authentication may be expired - logging in normally.", file=get_output())
-                set_login_state(False)
-                update_session('Authorization', None)
+    url = login_url()
+    
+    try:
+        if challenge_code is not None:
+            data = None
         else:
-            os.remove(pickle_path)
+            data = request_post(url, session, payload=payload)
+    except Exception as e:
+        return f"could not make log in request: {e}"
 
-    # Try to log in normally.
-    if not username:
-        username = input("Robinhood username: ")
-        payload['username'] = username
-
-    if not password:
-        password = getpass.getpass("Robinhood password: ")
-        payload['password'] = password
-
-    data = request_post(url, payload)
     # Handle case where mfa or challenge is required.
-    if data:
-        if 'mfa_required' in data:
-            mfa_token = input("Please type in the MFA code: ")
-            payload['mfa_code'] = mfa_token
-            res = request_post(url, payload, jsonify_data=False)
-            while (res.status_code != 200):
-                mfa_token = input(
-                    "That MFA code was not correct. Please type in another MFA code: ")
-                payload['mfa_code'] = mfa_token
-                res = request_post(url, payload, jsonify_data=False)
-            data = res.json()
-        elif 'challenge' in data:
-            challenge_id = data['challenge']['id']
-            sms_code = input('Enter Robinhood code for validation: ')
-            res = respond_to_challenge(challenge_id, sms_code)
-            while 'challenge' in res and res['challenge']['remaining_attempts'] > 0:
-                sms_code = input('That code was not correct. {0} tries remaining. Please type in another code: '.format(
-                    res['challenge']['remaining_attempts']))
-                res = respond_to_challenge(challenge_id, sms_code)
-            update_session(
-                'X-ROBINHOOD-CHALLENGE-RESPONSE-ID', challenge_id)
-            data = request_post(url, payload)
-        elif 'verification_workflow' in data:
-            workflow_id = data['verification_workflow']['id']
-            _validate_sherrif_id(device_token=device_token, workflow_id=workflow_id, mfa_code=mfa_code)
-            data = request_post(url, payload)
-        # Update Session data with authorization or raise exception with the information present in data.
-        if 'access_token' in data:
-            token = '{0} {1}'.format(data['token_type'], data['access_token'])
-            update_session('Authorization', token)
-            set_login_state(True)
-            data['detail'] = "logged in with brand new authentication code."
-            if store_session:
-                with open(pickle_path, 'wb') as f:
-                    pickle.dump({'token_type': data['token_type'],
-                                 'access_token': data['access_token'],
-                                 'refresh_token': data['refresh_token'],
-                                 'device_token': payload['device_token']}, f)
+    if data and 'mfa_required' in data:
+        save_mfa_challenge_to_cache(uid, device_token, "That MFA code was not correct. Please type in another MFA code")
+        return "mfa incorrect or missing, response cached"
+        # mfa_token = input("Please type in the MFA code: ")
+        # payload['mfa_code'] = mfa_token
+        # res = request_post(url, session, payload=payload, jsonify_data=False)
+        # while (res.status_code != 200):
+        #     mfa_token = input(
+        #         "That MFA code was not correct. Please type in another MFA code: ")
+        #     payload['mfa_code'] = mfa_token
+        #     res = request_post(url, session, payload=payload, jsonify_data=False)
+        # data = res.json()
+    # elif (challenge_code and challenge_id) or (data and 'challenge' in data):
+    #     # maybe have challenge code and challenge id at the START of the function? need to bypass initial request somehow
+    #     if not challenge_code:
+    #         challenge_id = data['challenge']['id']
+    #         save_challenge_to_cache(uid, challenge_type, challenge_id, 
+    #                                 f"Enter the {challenge_type} code you just received")
+    #         return "challenge required, response cached"
         
-        else:
-            if 'detail' in data:
-                raise Exception(data['detail'])
-            raise Exception(f"Received an error response {data}")
-    else:
+    #     res = respond_to_challenge(challenge_id, challenge_code, session)
+    #     if 'challenge' in res and res['challenge']['remaining_attempts'] > 0:
+    #         message = 'That code was not correct. {0} tries remaining. Please type in another code: '.format(res['challenge']['remaining_attempts'])
+    #         save_challenge_to_cache(uid, challenge_type, challenge_id, message)
+    #         return "challenge incorrect, response cached"
+    #     else: # figure out a more specific condition 
+    #         update_session('X-ROBINHOOD-CHALLENGE-RESPONSE-ID', challenge_id, session)
+    #         data = request_post(url, session, payload=payload)
+
+        # sms_code = input('Enter Robinhood code for validation: ')
+        # res = respond_to_challenge(challenge_id, sms_code, session)
+        # while 'challenge' in res and res['challenge']['remaining_attempts'] > 0:
+        #     sms_code = input('That code was not correct. {0} tries remaining. Please type in another code: '.format(
+        #         res['challenge']['remaining_attempts']))
+        #     res = respond_to_challenge(challenge_id, sms_code, session)
+        # update_session('X-ROBINHOOD-CHALLENGE-RESPONSE-ID', challenge_id, session)
+        # data = request_post(url, session, payload=payload)
+    elif challenge_code is not None or data and 'verification_workflow' in data:
+        # import pdb
+        # breakpoint()
+        validation_output = _validate_sherrif_id(
+            session, uid, device_token=device_token, mfa_code=mfa_code, 
+            challenge_code=challenge_code, login_attempt_data=data
+        )
+        if validation_output['error']:
+            return validation_output['message']
+        data = request_post(url, session, payload=payload)
+
+        # Update Session data with authorization or raise exception with the information present in data.
+    if data and 'access_token' in data:
+        save_cred(data, payload, uid, session)
+        save_login_success_to_cache(uid)
+    elif not data:
         raise Exception('Error: Trouble connecting to robinhood API. Check internet connection.')
     return(data)
 
-def _validate_sherrif_id(device_token:str, workflow_id:str,mfa_code:str):
-    url = "https://api.robinhood.com/pathfinder/user_machine/"
-    payload = {
-        'device_id': device_token,
-        'flow': 'suv',
-        'input':{'workflow_id': workflow_id}
-    }
-    data = request_post(url=url, payload=payload,json=True)
-    if "id" in data:
-        inquiries_url = f"https://api.robinhood.com/pathfinder/inquiries/{data['id']}/user_view/"
-        res = request_get(inquiries_url)
-        challenge_id=res['type_context']["context"]["sheriff_challenge"]["id"]
-        challenge_url = f"https://api.robinhood.com/challenge/{challenge_id}/respond/"
-        challenge_payload = {
-            'response': mfa_code
+# make sure to delete these three's cache entries upon response
+def save_challenge_to_cache(uid, challenge_type, challenge_id, device_token, 
+                            inquiries_url, message):
+    cache.delete(f"uid_{uid}_challenge",)
+    cache.set(
+        f"uid_{uid}_challenge",
+        json.dumps({
+            "challenge_type": challenge_type,
+            "inquiries_url": inquiries_url,
+            "challenge_id": challenge_id,
+            "device_token": device_token, 
+            "message": message}), 
+        timeout=120
+    )
+
+def save_mfa_challenge_to_cache(uid, message):
+    cache.delete(f"uid_{uid}_challenge",)
+    cache.set(
+        f"uid_{uid}_challenge",
+        json.dumps({"mfa": None, "message": message}), 
+        timeout=120
+    )
+
+def save_login_success_to_cache(uid):
+    cache.delete(f"uid_{uid}_challenge",)
+    cache.set(
+        f"uid_{uid}_challenge",
+        json.dumps({"message": "success"}), 
+        timeout=120
+    )
+
+def cache_error(uid):
+    cache.delete(f"uid_{uid}_challenge",)
+    cache.set(
+        f"uid_{uid}_challenge",
+        json.dumps({"message": "error"}), 
+        timeout=120
+    )
+
+def _validate_sherrif_id(session, uid, device_token:str, mfa_code:str, 
+                         challenge_code:str, login_attempt_data=None):
+    
+    if challenge_code is None:
+        url = "https://api.robinhood.com/pathfinder/user_machine/"
+        workflow_id = login_attempt_data['verification_workflow']['id']
+        payload = {
+            'device_id': device_token,
+            'flow': 'suv',
+            'input':{'workflow_id': workflow_id}
         }
-        challenge_response = request_post(url=challenge_url, payload=challenge_payload,json=True )
-        if challenge_response["status"] == "validated":
+        data = request_post(url, session, payload=payload,json=True)
+
+    if challenge_code is not None or "id" in data:
+        if challenge_code is not None:
+            challenge_cached_values = cache.get(f"uid_{uid}_challenge")
+            if challenge_cached_values is None:
+                raise Exception("challenge values not found in cache")
+            else:
+                challenge_values = json.loads(challenge_cached_values)
+                challenge_type = challenge_values["challenge_type"]
+                inquiries_url = challenge_values["inquiries_url"]
+                challenge_id = challenge_values["challenge_id"]
+                device_token = challenge_values["device_token"]
+        else:
+            inquiries_url = f"https://api.robinhood.com/pathfinder/inquiries/{data['id']}/user_view/"
+            res = request_get(inquiries_url, session)
+            challenge_id = res['type_context']["context"]["sheriff_challenge"]["id"]
+            challenge_type = res['type_context']["context"]["sheriff_challenge"]["type"]
+            if challenge_type == 'sms':
+                save_challenge_to_cache(
+                    uid, challenge_type, challenge_id, device_token, inquiries_url,
+                    "That sms code was not correct. Please type in the new code"
+                )
+                return {"error": "sms", "message": "sms incorrect or missing, response cached"}
+        
+        if challenge_type == 'app':
+            response_value = mfa_code
+        elif challenge_type == 'sms':
+            response_value = challenge_code or "111111"
+        challenge_payload = {
+            'response': response_value
+        }
+        import pdb
+        breakpoint()
+        challenge_url = f"https://api.robinhood.com/challenge/{challenge_id}/respond/"
+
+        challenge_response = request_post(challenge_url, session, payload=challenge_payload, json=True)
+        if 'status' in challenge_response and challenge_response["status"] == "validated":
             inquiries_payload = {"sequence":0,"user_input":{"status":"continue"}}
-            inquiries_response = request_post(url=inquiries_url, payload=inquiries_payload,json=True )
+            inquiries_response = request_post(inquiries_url, session, payload=inquiries_payload, json=True)
             if inquiries_response["type_context"]["result"] == "workflow_status_approved":
-                return
+                return {"error": None, "message": "success"}
             else:
                 raise Exception("workflow status  not approved")    
         else:
-            raise Exception("Challenge not validated")
+            if challenge_type == 'app':
+                save_mfa_challenge_to_cache(uid, f"That MFA code was not correct. Please type in another MFA code")
+                return {"error": "mfa", "message": "mfa incorrect or missing, response cached"}
+            elif challenge_type == 'sms':
+                save_challenge_to_cache(
+                    uid, challenge_type, challenge_id, device_token, inquiries_url,
+                    "That sms code was not correct. Please type in the new code"
+                )
+                return {"error": "sms", "message": "sms incorrect or missing, response cached"}
+            
     raise Exception("Id not returned in user-machine call")
-
-def _get_sherrif_challenge(token_id:str):
-    
-    if "id" in data:
-        return data["id"]
-    raise Exception("Id not returned in user-machine call")
-
 
 @login_required
 def logout():
@@ -252,5 +359,5 @@ def logout():
     :returns: None
 
     """
-    set_login_state(False)
+    # set_login_state(False)
     update_session('Authorization', None)

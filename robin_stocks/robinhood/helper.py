@@ -3,13 +3,20 @@
 from functools import wraps
 
 import requests
-from robin_stocks.robinhood.globals import LOGGED_IN, OUTPUT, SESSION
+from robin_stocks.robinhood.globals import OUTPUT, SESSION_HEADERS#, SESSION, LOGGED_IN
+#from django.core.cache import cache
+from datetime import datetime
+from requests import Session
 
 
-def set_login_state(logged_in):
-    """Sets the login state"""
-    global LOGGED_IN
-    LOGGED_IN = logged_in
+# do something with cache? make this decorator in your django project?
+# def set_login_state(uid, logged_in):
+#     """Sets the login state"""
+#     key = f"{uid}_logged_in"
+#     if logged_in:
+#         cache.add(key, datetime.now())
+#     else:
+#         cache.delete(key)
 
 def set_output(output):
     """Sets the global output stream"""
@@ -21,13 +28,21 @@ def get_output():
     global OUTPUT
     return OUTPUT
 
+def get_default_headers():
+    global SESSION_HEADERS
+    return SESSION_HEADERS
+
+def create_session():
+    session = Session()
+    session.headers = get_default_headers().copy()
+    return session
+
 def login_required(func):
     """A decorator for indicating which methods require the user to be logged
        in."""
     @wraps(func)
-    def login_wrapper(*args, **kwargs):
-        global LOGGED_IN
-        if not LOGGED_IN:
+    def login_wrapper(*args, uid="", **kwargs):
+        if False:
             raise Exception('{} can only be called when logged in'.format(
                 func.__name__))
         return(func(*args, **kwargs))
@@ -230,7 +245,7 @@ def inputs_to_set(inputSymbols):
     return(symbols_list)
 
 
-def request_document(url, payload=None):
+def request_document(url, session, payload=None):
     """Using a document url, makes a get request and returnes the session data.
 
     :param url: The url to send a get request to.
@@ -239,7 +254,7 @@ def request_document(url, payload=None):
 
     """ 
     try:
-        res = SESSION.get(url, params=payload)
+        res = session.get(url, params=payload)
         res.raise_for_status()
     except requests.exceptions.HTTPError as message:
         print(message, file=get_output())
@@ -248,7 +263,7 @@ def request_document(url, payload=None):
     return(res)
 
 
-def request_get(url, dataType='regular', payload=None, jsonify_data=True):
+def request_get(url, session, dataType='regular', payload=None, jsonify_data=True):
     """For a given url and payload, makes a get request and returns the data.
 
     :param url: The url to send a get request to.
@@ -272,14 +287,14 @@ def request_get(url, dataType='regular', payload=None, jsonify_data=True):
     res = None
     if jsonify_data:
         try:
-            res = SESSION.get(url, params=payload)
+            res = session.get(url, params=payload)
             res.raise_for_status()
             data = res.json()
         except (requests.exceptions.HTTPError, AttributeError) as message:
             print(message, file=get_output())
             return(data)
     else:
-        res = SESSION.get(url, params=payload)
+        res = session.get(url, params=payload)
         return(res)
     # Only continue to filter data if jsonify_data=True, and Session.get returned status code <200>.
     if (dataType == 'results'):
@@ -301,7 +316,7 @@ def request_get(url, dataType='regular', payload=None, jsonify_data=True):
             print('Found Additional pages.', file=get_output())
         while nextData['next']:
             try:
-                res = SESSION.get(nextData['next'])
+                res = session.get(nextData['next'])
                 res.raise_for_status()
                 nextData = res.json()
             except:
@@ -323,7 +338,7 @@ def request_get(url, dataType='regular', payload=None, jsonify_data=True):
     return(data)
 
 
-def request_post(url, payload=None, timeout=16, json=False, jsonify_data=True):
+def request_post(url, session, payload=None, timeout=16, json=False, jsonify_data=True):
     """For a given url and payload, makes a post request and returns the response. Allows for responses other than 200.
 
     :param url: The url to send a post request to.
@@ -343,12 +358,14 @@ def request_post(url, payload=None, timeout=16, json=False, jsonify_data=True):
     res = None
     try:
         if json:
-            update_session('Content-Type', 'application/json')
-            res = SESSION.post(url, json=payload, timeout=timeout)
+            update_session('Content-Type', 'application/json', session)
+            res = session.post(url, json=payload, timeout=timeout)
             update_session(
-                'Content-Type', 'application/x-www-form-urlencoded; charset=utf-8')
+                'Content-Type', 'application/x-www-form-urlencoded; charset=utf-8', session)
         else:
-            res = SESSION.post(url, data=payload, timeout=timeout)
+            res = session.post(url, data=payload, timeout=timeout)
+            # print("debugging?")
+            # return f"{res} / {res.json()} failed with payload {payload} and {session.headers}"
         if res.status_code not in [200, 201, 202, 204, 301, 302, 303, 304, 307, 400, 401, 402, 403]:
             raise Exception("Received "+ str(res.status_code))
         data = res.json()
@@ -360,7 +377,7 @@ def request_post(url, payload=None, timeout=16, json=False, jsonify_data=True):
         return(res)
 
 
-def request_delete(url):
+def request_delete(url, session):
     """For a given url and payload, makes a delete request and returns the response.
 
     :param url: The url to send a delete request to.
@@ -369,7 +386,7 @@ def request_delete(url):
 
     """
     try:
-        res = SESSION.delete(url)
+        res = session.delete(url)
         res.raise_for_status()
         data = res
     except Exception as message:
@@ -379,7 +396,7 @@ def request_delete(url):
     return(data)
 
 
-def update_session(key, value):
+def update_session(key, value, session):
     """Updates the session header used by the requests library.
 
     :param key: The key value to update or add to session header.
@@ -389,7 +406,7 @@ def update_session(key, value):
     :returns: None. Updates the session header with a value.
 
     """
-    SESSION.headers[key] = value
+    session.headers[key] = value
 
 
 def error_argument_not_key_in_dictionary(keyword):

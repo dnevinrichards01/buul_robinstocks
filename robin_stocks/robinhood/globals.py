@@ -4,11 +4,12 @@ import os
 
 from requests import Session
 
-# Keeps track on if the user is logged in or not.
-LOGGED_IN = False
-# The session object for making get and post requests.
-SESSION = Session()
-SESSION.headers = {
+# # Keeps track on if the user is logged in or not.
+# LOGGED_IN = False
+# # The session object for making get and post requests.
+# SESSION = Session()
+# SESSION.headers = {
+SESSION_HEADERS = {
     "Accept": "*/*",
     "Accept-Encoding": "gzip,deflate,br",
     "Accept-Language": "en-US,en;q=1",

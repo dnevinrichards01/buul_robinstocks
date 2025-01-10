@@ -23,6 +23,7 @@ setup(name='robin_stocks',
           'requests',
           'pyotp',
           'python-dotenv',
-          'cryptography'
+          'cryptography',
+          'django'
       ],
       zip_safe=False)
