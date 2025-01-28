@@ -4,7 +4,7 @@ from functools import lru_cache as cache
 from robin_stocks.robinhood.helper import *
 from robin_stocks.robinhood.urls import *
 
-def get_quotes(inputSymbols, info=None):
+def get_quotes(session, inputSymbols, info=None):
     """Takes any number of stock tickers and returns information pertaining to its price.
 
     :param inputSymbols: May be a single stock ticker or a list of stock tickers.
@@ -33,7 +33,7 @@ def get_quotes(inputSymbols, info=None):
     symbols = inputs_to_set(inputSymbols)
     url = quotes_url()
     payload = {'symbols': ','.join(symbols)}
-    data = request_get(url, 'results', payload)
+    data = request_get(url, session, dataType='results', payload=payload)
 
     if (data == None or data == [None]):
         return data
@@ -102,7 +102,7 @@ def get_fundamentals(inputSymbols, info=None):
     return(filter_data(data, info))
 
 
-def get_instruments_by_symbols(inputSymbols, info=None):
+def get_instruments_by_symbols(session, inputSymbols, info=None):
     """Takes any number of stock tickers and returns information held by the market
     such as ticker name, bloomberg id, and listing date.
 
@@ -143,7 +143,7 @@ def get_instruments_by_symbols(inputSymbols, info=None):
     data = []
     for item in symbols:
         payload = {'symbol': item}
-        itemData = request_get(url, 'indexzero', payload)
+        itemData = request_get(url, session, dataType='indexzero', payload=payload)
 
         if itemData:
             data.append(itemData)
@@ -195,7 +195,7 @@ def get_instrument_by_url(url, info=None):
     return(filter_data(data, info))
 
 
-def get_latest_price(inputSymbols, priceType=None, includeExtendedHours=True):
+def get_latest_price(session, inputSymbols, priceType=None, includeExtendedHours=True):
     """Takes any number of stock tickers and returns the latest price of each one as a string.
 
     :param inputSymbols: May be a single stock ticker or a list of stock tickers.
@@ -209,7 +209,7 @@ def get_latest_price(inputSymbols, priceType=None, includeExtendedHours=True):
 
     """ 
     symbols = inputs_to_set(inputSymbols)
-    quote = get_quotes(symbols)
+    quote = get_quotes(session, symbols)
 
     prices = []
     for item in quote:

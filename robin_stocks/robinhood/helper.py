@@ -7,6 +7,7 @@ from robin_stocks.robinhood.globals import OUTPUT, SESSION_HEADERS#, SESSION, LO
 #from django.core.cache import cache
 from datetime import datetime
 from requests import Session
+from django.apps import apps
 
 
 # do something with cache? make this decorator in your django project?
@@ -17,6 +18,17 @@ from requests import Session
 #         cache.add(key, datetime.now())
 #     else:
 #         cache.delete(key)
+
+def rh_create_session(uid):
+    UserRobinhoodInfo = apps.get_model("robin_stocks", "UserRobinhoodInfo")
+    userRobinhoodInfo = UserRobinhoodInfo.objects.get(user__id=uid)
+    session = create_session()
+    update_session(
+        "Authorization", 
+        f"Bearer {userRobinhoodInfo.access_token}",
+        session
+    )
+    return session, userRobinhoodInfo
 
 def set_output(output):
     """Sets the global output stream"""

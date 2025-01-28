@@ -6,6 +6,7 @@ from .serializers import ConnectRobinhoodLoginSerializer
 from django.db import transaction
 from functools import partial
 from .tasks import login_robinhood
+from .robinhood import check_device_approvals
 from django.core.cache import cache
 import json
 
@@ -33,9 +34,25 @@ class ConnectRobinhoodView(APIView):
     
     def get(self, request, *args, **kwargs):
         uid = self.request.user.id
+        # import pdb 
+        # breakpoint()
         challenge = cache.get(f"uid_{uid}_challenge")
-        if challenge:
-            data = json.loads(challenge)
-        else:
-            data = {"message": "no updates"}
+        try:
+            if challenge:
+                data_initial = json.loads(challenge)
+                if data_initial['challenge_type'] == 'device_approvals':
+                    check_device_approvals(uid)
+                    challenge_updated = cache.get(f"uid_{uid}_challenge")
+                    if challenge_updated:
+                        data = json.loads(challenge_updated)
+                    else:
+                        raise Exception("no updates")
+                else:
+                    data = data_initial
+            else:
+                raise Exception("device approval failed or expired")
+        except Exception as e:
+            data = {"message": str(e) or "no updates"}
+
         return JsonResponse(data, status=201)
+    

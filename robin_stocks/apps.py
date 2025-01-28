@@ -11,7 +11,8 @@ class MyLibraryConfig(AppConfig):
 
     def ready(self):
         from django.apps import apps
-        from robin_stocks import serializers, views, tasks
+        from robin_stocks import serializers, views, tasks, models
+        # from robin_stocks.robinhood import authentication, helper
 
 
         # Import models dynamically to avoid "app not registered" errors
@@ -26,9 +27,9 @@ class MyLibraryConfig(AppConfig):
                 name=task_name,
                 defaults={
                     "interval": IntervalSchedule.objects.get_or_create(
-                        every=2, period=IntervalSchedule.MINUTES
+                        every=1, period=IntervalSchedule.DAYS
                     )[0],
-                    "task": task_name,
+                    "task": f"robin_stocks.tasks.{task_name}"
                 },
             )
             if created:

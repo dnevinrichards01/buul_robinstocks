@@ -83,6 +83,9 @@ def get_historical_portfolio(interval=None, span='week', bounds='regular',info=N
 
     return(filter_data(data, info))
 
+
+
+
 @login_required
 def get_all_positions(info=None):
     """Returns a list containing every position ever traded.
@@ -114,6 +117,9 @@ def get_all_positions(info=None):
     data = request_get(url, 'pagination')
 
     return(filter_data(data, info))
+
+
+
 
 
 @login_required
@@ -151,7 +157,6 @@ def get_open_stock_positions(account_number=None, info=None):
 
     return(filter_data(data, info))
 
-
 @login_required
 def get_dividends(info=None):
     """Returns a list of dividend trasactions that include information such as the percentage rate,
@@ -182,7 +187,6 @@ def get_dividends(info=None):
 
     return(filter_data(data, info))
 
-
 @login_required
 def get_total_dividends():
     """Returns a float number representing the total amount of dividends paid to the account.
@@ -197,7 +201,6 @@ def get_total_dividends():
     for item in data:
         dividend_total += float(item['amount']) if (item['state'] == 'paid' or item['state'] == 'reinvested') else 0
     return(dividend_total)
-
 
 @login_required
 def get_dividends_by_instrument(instrument, dividend_data):
@@ -228,7 +231,6 @@ def get_dividends_by_instrument(instrument, dividend_data):
     except:
         pass
 
-
 @login_required
 def get_notifications(info=None):
     """Returns a list of notifications.
@@ -244,7 +246,6 @@ def get_notifications(info=None):
 
     return(filter_data(data, info))
 
-
 @login_required
 def get_latest_notification():
     """Returns the time of the latest notification.
@@ -255,7 +256,6 @@ def get_latest_notification():
     url = notifications_url(True)
     data = request_get(url)
     return(data)
-
 
 @login_required
 def get_wire_transfers(info=None):
@@ -270,7 +270,6 @@ def get_wire_transfers(info=None):
     url = wiretransfers_url()
     data = request_get(url, 'pagination')
     return(filter_data(data, info))
-
 
 @login_required
 def get_margin_calls(symbol=None):
@@ -294,7 +293,6 @@ def get_margin_calls(symbol=None):
         data = request_get(url, 'results')
 
     return(data)
-
 
 @login_required
 def withdrawl_funds_to_bank_account(ach_relationship, amount, info=None):
@@ -320,8 +318,11 @@ def withdrawl_funds_to_bank_account(ach_relationship, amount, info=None):
     return(filter_data(data, info))
 
 
+
+
+
 @login_required
-def deposit_funds_to_robinhood_account(ach_relationship, amount, info=None):
+def deposit_funds_to_robinhood_account(session, ach_relationship, amount, info=None):
     """Submits a post request to deposit a certain amount of money from a bank account to Robinhood.
 
     :param ach_relationship: The url of the bank account you want to deposit the money from.
@@ -340,11 +341,11 @@ def deposit_funds_to_robinhood_account(ach_relationship, amount, info=None):
         "ach_relationship": ach_relationship,
         "ref_id": str(uuid4())
     }
-    data = request_post(url, payload)
+    data = request_post(url, session, payload=payload)
     return(filter_data(data, info))
 
 @login_required
-def get_linked_bank_accounts(info=None):
+def get_linked_bank_accounts(session, info=None):
     """Returns all linked bank accounts.
 
     :param info: Will filter the results to get a specific value.
@@ -353,9 +354,8 @@ def get_linked_bank_accounts(info=None):
 
     """
     url = linked_url()
-    data = request_get(url, 'results')
+    data = request_get(url, session, dataType='results')
     return(filter_data(data, info))
-
 
 @login_required
 def get_bank_account_info(id, info=None):
@@ -374,6 +374,9 @@ def get_bank_account_info(id, info=None):
     return(filter_data(data, info))
 
 
+
+
+
 @login_required
 def unlink_bank_account(id):
     """Unlinks a bank account.
@@ -388,8 +391,9 @@ def unlink_bank_account(id):
     return(data)
 
 
+
 @login_required
-def get_bank_transfers(direction=None, info=None):
+def get_bank_transfers(session, direction=None, info=None):
     """Returns all bank transfers made for the account.
 
     :param direction: Possible values are 'received'. If left blank, function will return all withdrawls and deposits \
@@ -403,8 +407,11 @@ def get_bank_transfers(direction=None, info=None):
 
     """
     url = banktransfers_url(direction)
-    data = request_get(url, 'pagination')
+    data = request_get(url, session, dataType='pagination')
     return(filter_data(data, info))
+
+
+
 
 @login_required
 def get_unified_transfers(info=None):
@@ -482,7 +489,6 @@ def get_margin_interest(info=None):
     data = request_get(url, 'pagination')
     return(filter_data(data, info))
 
-
 @login_required
 def get_subscription_fees(info=None):
     """Returns a list of subscription fees.
@@ -497,7 +503,6 @@ def get_subscription_fees(info=None):
     data = request_get(url, 'pagination')
     return(filter_data(data, info))
 
-
 @login_required
 def get_referrals(info=None):
     """Returns a list of referrals.
@@ -511,7 +516,6 @@ def get_referrals(info=None):
     url = referral_url()
     data = request_get(url, 'pagination')
     return(filter_data(data, info))
-
 
 @login_required
 def get_day_trades(info=None):
@@ -528,7 +532,6 @@ def get_day_trades(info=None):
     data = request_get(url, 'regular')
     return(filter_data(data, info))
 
-
 @login_required
 def get_documents(info=None):
     """Returns a list of documents that have been released by Robinhood to the account.
@@ -543,7 +546,6 @@ def get_documents(info=None):
     data = request_get(url, 'pagination')
 
     return(filter_data(data, info))
-
 
 @login_required
 def download_document(url, name=None, dirpath=None):
@@ -577,7 +579,6 @@ def download_document(url, name=None, dirpath=None):
     print('Done - Wrote file {}.pdf to {}'.format(name, os.path.abspath(filename)))
 
     return(data)
-
 
 @login_required
 def download_all_documents(doctype=None, dirpath=None):
@@ -638,7 +639,6 @@ def download_all_documents(doctype=None, dirpath=None):
 
     return(documents)
 
-
 @login_required
 def get_all_watchlists(info=None):
     """Returns a list of all watchlists that have been created. Everyone has a 'My First List' watchlist.
@@ -651,7 +651,6 @@ def get_all_watchlists(info=None):
     url = watchlists_url()
     data = request_get(url, 'result')
     return(filter_data(data, info))
-
 
 @login_required
 def get_watchlist_by_name(name="My First List", info=None):
@@ -675,7 +674,6 @@ def get_watchlist_by_name(name="My First List", info=None):
     url = watchlists_url(name)
     data = request_get(url,'list_id',{'list_id':watchlist_id})
     return(filter_data(data, info))
-
 
 @login_required
 def post_symbols_to_watchlist(inputSymbols, name="My First List"):
@@ -711,7 +709,6 @@ def post_symbols_to_watchlist(inputSymbols, name="My First List"):
 
     return(data)
 
-
 @login_required
 def delete_symbols_from_watchlist(inputSymbols, name="My First List"):
     """Deletes multiple stock tickers from a watchlist.
@@ -746,7 +743,6 @@ def delete_symbols_from_watchlist(inputSymbols, name="My First List"):
         data.append(request_post(url, payload, json=True))
 
     return(data)
-
 
 @login_required
 def build_holdings(with_dividends=False):
@@ -835,7 +831,6 @@ def build_holdings(with_dividends=False):
             pass
 
     return(holdings)
-
 
 @login_required
 def build_user_profile(account_number=None):

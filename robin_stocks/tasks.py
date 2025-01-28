@@ -3,6 +3,14 @@ from datetime import datetime, timedelta
 from django.utils.timezone import now
 from django.apps import apps
 
+from django.http import JsonResponse
+import json
+
+import robin_stocks.robinhood as r
+from django.core.cache import cache
+
+
+
 @shared_task(name="refresh_robinhood")
 def refresh_robinhood():
     UserRobinhoodInfo = apps.get_model("robin_stocks", "UserRobinhoodInfo")
@@ -14,8 +22,6 @@ def refresh_robinhood():
 
 @shared_task(name="login_robinhood")
 def login_robinhood(**kwargs):
-    # if apps.is_installed("robin_stocks"):
-    #     raise RuntimeError("'robin_stocks' not yet registered")
     import robin_stocks.robinhood as r
     kwargs['session'] = r.create_session()
     try:
@@ -30,3 +36,5 @@ def login_robinhood(**kwargs):
             return e.args[0]
         except Exception as e2:
             return f"{type(e)}: {e.__str__()}"
+
+
