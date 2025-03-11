@@ -15,8 +15,8 @@ class ConnectRobinhoodView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        import pdb
-        breakpoint() 
+        # import pdb
+        # breakpoint() 
         serializer = ConnectRobinhoodLoginSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -29,10 +29,13 @@ class ConnectRobinhoodView(APIView):
                     }, 
                     status=400
                 )
+            error_messages = {}
             for field in e.detail:
-                error_messages = {}
                 if field in e.detail and len(e.detail[field]) > 0:
-                    error_messages[field] = e.detail[field][0]
+                    if field == "username":
+                        error_messages["email"] = e.detail["username"][0]
+                    else:
+                        error_messages[field] = e.detail[field][0]
                 return JsonResponse(
                     {
                         "success": None, 
@@ -58,8 +61,20 @@ class ConnectRobinhoodView(APIView):
         
         validated_data = serializer.validated_data
         uid = self.request.user.id
-        validated_data['uid'] = uid
-        login_robinhood.apply_async(kwargs=validated_data)
+        mfa_code = validated_data["app"] if "app" in validated_data else None
+        challenge_code = validated_data["sms"] if "sms" in validated_data else None
+        device_approval = validated_data["prompt"] if "prompt" in validated_data else None
+
+        login_robinhood.apply_async(
+            kwargs = {
+                "uid": uid,
+                "username": validated_data["username"],
+                "password": validated_data["password"],
+                "mfa_code": mfa_code,
+                "device_approval": challenge_code,
+                "challenge_code": device_approval
+            }
+        )
 
         return JsonResponse(
             {
@@ -92,7 +107,7 @@ class ConnectRobinhoodView(APIView):
                 }, 
                 status=201
             )
-        elif not challenge_data["challenge_type"]:
+        elif challenge_data["challenge_type"]:
             return JsonResponse(
                 {
                     "success": None,
@@ -101,7 +116,7 @@ class ConnectRobinhoodView(APIView):
                         "error_message": challenge_data["error"]
                     }
                 }, 
-                status=400
+                status=200
             )
         else:
             return JsonResponse(
@@ -112,7 +127,7 @@ class ConnectRobinhoodView(APIView):
                         "error_message": challenge_data["error"]
                     }
                 }, 
-                status=201
+                status=200
             )
 
 
