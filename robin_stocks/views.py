@@ -6,7 +6,6 @@ from .serializers import ConnectRobinhoodLoginSerializer
 from django.db import transaction
 from functools import partial
 from .tasks import login_robinhood
-from .robinhood import check_device_approvals
 from django.core.cache import cache
 import json
 from rest_framework.exceptions import ValidationError
@@ -21,7 +20,7 @@ class ConnectRobinhoodView(APIView):
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError as e:
-            if "non_field_errors" in e.detail and len(e.detail[field]) > 0:
+            if "non_field_errors" in e.detail and len(e.detail["non_field_errors"]) > 0:
                 return JsonResponse(
                     {
                         "success": None, 

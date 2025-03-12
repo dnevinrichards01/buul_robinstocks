@@ -438,8 +438,8 @@ def response_verification_flow(session, uid, device_token:str, mfa_code:str,
                     "message": "sms incorrect or missing, response cached"
                 }
             elif challenge_type == 'prompt':
-                save_device_approvals_challenge_to_cache(uid, inquiries_url, 
-                                                            challenge_id, device_token)
+                save_device_approvals_challenge_to_cache(uid, inquiries_url, challenge_id, device_token,
+                                                         "Please try responding the new prompt in the Robinhood app again and then click continue.")
                 return {
                     "error": "prompt", 
                     "success": None,
@@ -476,7 +476,7 @@ def save_sms_challenge_to_cache(uid, challenge_type, inquiries_url, challenge_id
     )
 
 def save_device_approvals_challenge_to_cache(uid, inquiries_url, challenge_id,
-                                             device_token):
+                                             device_token, message):
     cache.delete(f"uid_{uid}_rh_challenge")
     cache.set(
         f"uid_{uid}_rh_challenge",
@@ -486,7 +486,7 @@ def save_device_approvals_challenge_to_cache(uid, inquiries_url, challenge_id,
             "challenge_id": challenge_id,
             "device_token": device_token, 
             "success": None,
-            "error": "complete prompt in robinhood app"
+            "error": message
         }), 
         timeout=1800
     )
