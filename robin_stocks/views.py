@@ -23,7 +23,7 @@ class ConnectRobinhoodView(APIView):
         # breakpoint() 
         serializer = ConnectRobinhoodLoginSerializer(data=request.data)
         validation_error_response = validate(
-            serializer, self, 
+            Log, serializer, self, 
             fields_to_correct=["username", "password", "sms", "prompt", "app", "by_sms"], 
             fields_to_fail=["non_field_errors"],
             rename_field=lambda x: "email" if x == "username" else x
