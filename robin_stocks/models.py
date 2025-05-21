@@ -2,10 +2,10 @@ from django.db import models
 # from django.contrib.auth.models import User
 from api.models import User
 from django.utils.timezone import now
-from accumate_backend.settings import RH_ACCESS_KMS_ALIAS, \
+from buul_backend.settings import RH_ACCESS_KMS_ALIAS, \
     RH_REFRESH_KMS_ALIAS, PLAID_ITEM_KMS_ALIAS, PLAID_USER_KMS_ALIAS, \
     USER_PII_KMS_ALIAS, ANONYMIZE_USER_HMAC_KEY
-from accumate_backend.encryption import encrypt, decrypt
+from buul_backend.encryption import encrypt, decrypt
 import hmac
 import hashlib
 

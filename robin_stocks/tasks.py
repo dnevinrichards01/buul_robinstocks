@@ -9,7 +9,7 @@ import json
 import robin_stocks.robinhood as r
 from django.core.cache import cache
 
-from accumate_backend.retry_db import retry_on_db_error
+from buul_backend.retry_db import retry_on_db_error
 
 
 @shared_task(name="refresh_robinhood")

@@ -11,7 +11,7 @@ import json
 from rest_framework.exceptions import ValidationError
 from robin_stocks.models import Log
 
-from accumate_backend.viewHelper import LogState, log, validate, \
+from buul_backend.viewHelper import LogState, log, validate, \
     cached_task_logging_info
 
 
