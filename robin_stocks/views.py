@@ -42,6 +42,8 @@ class ConnectRobinhoodView(APIView):
                 "default_to_sms": serializer.validated_data.get("default_to_sms", None)
             }
         )
+        uid = self.request.user.id
+        cache.delete(f"uid_{uid}_rh_challenge_user_facing")
 
         status = 200
         log(Log, self, status, LogState.SUCCESS)
@@ -58,7 +60,7 @@ class ConnectRobinhoodView(APIView):
         uid = user.id
         # import pdb 
         # breakpoint()
-        challenge = cache.get(f"uid_{uid}_rh_challenge")
+        challenge = cache.get(f"uid_{uid}_rh_challenge_user_facing")
         if not challenge:
             status = 200
             log(Log, self, status, LogState.BACKGROUND_TASK_WAITING)

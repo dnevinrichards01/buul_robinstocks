@@ -162,8 +162,14 @@ def login(session=None, uid=None, username=None, password=None, expiresIn=86400,
                 "error": "no cache", 
                 "message": "(No cached mfa info) An internal error occured. Please log in again."
             }
-        cache_error = True
+        
         challenge_values = json.loads(challenge_cached_values)
+
+        if challenge_values["success"]:
+            save_login_success_to_cache(uid)
+            return "success: logged in, creds saved"
+        
+        cache_error = True
         for key in challenge_values:
             if key != "error" and challenge_values[key]:
                 cache_error = False
@@ -368,11 +374,13 @@ def response_verification_flow(session, uid, device_token, mfa_code,
     if challenge_type == 'app':
         challenge_payload = {'response': mfa_code}
     elif challenge_type == 'sms':
+        # we may want to include sequence num here
         challenge_payload = {'response': challenge_code}
     if challenge_type != 'prompt':
         challenge_url = f"https://api.robinhood.com/challenge/{challenge_id}/respond/"
         challenge_response = request_post(challenge_url, session, payload=challenge_payload, json=True)
         challenge_validated = 'status' in challenge_response and challenge_response["status"] == "validated"
+        # check challenge validated respnse here
     else:
         if default_to_sms:
             inquiries_payload = {
@@ -469,92 +477,103 @@ def response_verification_flow(session, uid, device_token, mfa_code,
 
 def save_sms_challenge_to_cache(uid, challenge_type, inquiries_url, challenge_id, 
                                 device_token, message, sequence_num=0):
-    cache.delete(f"uid_{uid}_rh_challenge",)
-    cache.set(
-        f"uid_{uid}_rh_challenge",
-        json.dumps({
-            "challenge_type": challenge_type,
-            "inquiries_url": inquiries_url,
-            "challenge_id": challenge_id,
-            "device_token": device_token, 
-            "sequence_num": sequence_num,
-            "success": None,
-            "error": "enter otp sent to your phone"
-        }), 
-        timeout=1800
-    )
+    cached_val_keys = [f"uid_{uid}_rh_challenge", f"uid_{uid}_rh_challenge_user_facing"]
+    for cached_val_key in cached_val_keys:
+        cache.delete(cached_val_key)
+        cache.set(
+            cached_val_key,
+            json.dumps({
+                "challenge_type": challenge_type,
+                "inquiries_url": inquiries_url,
+                "challenge_id": challenge_id,
+                "device_token": device_token, 
+                "sequence_num": sequence_num,
+                "success": None,
+                "error": "enter otp sent to your phone"
+            }), 
+            timeout=1800
+        )
 
 def save_device_approvals_challenge_to_cache(uid, inquiries_url, challenge_id,
                                              device_token, message, sequence_num=0):
-    cache.delete(f"uid_{uid}_rh_challenge")
-    cache.set(
-        f"uid_{uid}_rh_challenge",
-        json.dumps({
-            "challenge_type": "prompt",
-            "inquiries_url": inquiries_url,
-            "challenge_id": challenge_id,
-            "device_token": device_token, 
-            "sequence_num": sequence_num,
-            "success": None,
-            "error": message
-        }), 
-        timeout=1800
-    )
+    cached_val_keys = [f"uid_{uid}_rh_challenge", f"uid_{uid}_rh_challenge_user_facing"]
+    for cached_val_key in cached_val_keys:
+        cache.delete(cached_val_key)
+        cache.set(
+            cached_val_key,
+            json.dumps({
+                "challenge_type": "prompt",
+                "inquiries_url": inquiries_url,
+                "challenge_id": challenge_id,
+                "device_token": device_token, 
+                "sequence_num": sequence_num,
+                "success": None,
+                "error": message
+            }), 
+            timeout=1800
+        )
 
 def save_mfa_challenge_to_cache(uid, inquiries_url, challenge_id, device_token,
                                 error_message, sequence_num=0):
-    cache.delete(f"uid_{uid}_rh_challenge",)
-    cache.set(
-        f"uid_{uid}_rh_challenge",
-        json.dumps({
-            "challenge_type": "app",
-            "inquiries_url": inquiries_url,
-            "challenge_id": challenge_id,
-            "device_token": device_token, 
-            "sequence_num": sequence_num,
-            "success": None,
-            "error": error_message
-        }),
-        timeout=1800
-    )
-
-def save_login_success_to_cache(uid):
-    cache.delete(f"uid_{uid}_rh_challenge",)
-    cache.set(
-        f"uid_{uid}_rh_challenge",
-        json.dumps({
-            "challenge_type": None,
-            "inquiries_url": None,
-            "challenge_id": None,
-            "device_token": None, 
-            "success": "logged in",
-            "error": None
-        }),
-        timeout=1800
-    )
-
-def save_error_to_cache(uid, error_message):
-    cached_val = cache.get(f"uid_{uid}_rh_challenge",)
-    if cached_val:
-        val = json.loads(cached_val)
-        val["error"] = error_message
-        cache.delete(f"uid_{uid}_rh_challenge",)
+    cached_val_keys = [f"uid_{uid}_rh_challenge", f"uid_{uid}_rh_challenge_user_facing"]
+    for cached_val_key in cached_val_keys:
+        cache.delete(cached_val_key)
         cache.set(
-            f"uid_{uid}_rh_challenge",
-            json.dumps(val),
-            timeout=1800
-        )
-    else:
-        cache.delete(f"uid_{uid}_rh_challenge",)
-        cache.set(
-            f"uid_{uid}_rh_challenge",
+            cached_val_key,
             json.dumps({
-                "challenge_type": None,
-                "inquiries_url": None,
-                "challenge_id": None,
-                "device_token": None, 
+                "challenge_type": "app",
+                "inquiries_url": inquiries_url,
+                "challenge_id": challenge_id,
+                "device_token": device_token, 
+                "sequence_num": sequence_num,
                 "success": None,
                 "error": error_message
             }),
             timeout=1800
         )
+
+def save_login_success_to_cache(uid):
+    cached_val_keys = [f"uid_{uid}_rh_challenge", f"uid_{uid}_rh_challenge_user_facing"]
+    for cached_val_key in cached_val_keys:
+        cache.delete(cached_val_key)
+        cache.set(
+            cached_val_key,
+            json.dumps({
+                "challenge_type": None,
+                "inquiries_url": None,
+                "challenge_id": None,
+                "device_token": None, 
+                "success": "logged in",
+                "error": None
+            }),
+            timeout=1800
+        )
+
+def save_error_to_cache(uid, error_message):
+    cached_val_keys = [f"uid_{uid}_rh_challenge", f"uid_{uid}_rh_challenge_user_facing"]
+    for cached_val_key in cached_val_keys:
+        cached_val = cache.get(cached_val_key)
+        if cached_val:
+            val = json.loads(cached_val)
+            val["error"] = error_message
+            cache.delete(cached_val_key)
+            cache.set(
+                cached_val_key,
+                json.dumps(val),
+                timeout=1800
+            )
+        else:
+            cache.delete(cached_val_key)
+            cache.set(
+                cached_val_key,
+                json.dumps({
+                    "challenge_type": None,
+                    "inquiries_url": None,
+                    "challenge_id": None,
+                    "device_token": None, 
+                    "success": None,
+                    "error": error_message
+                }),
+                timeout=1800
+            )
+
